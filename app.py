@@ -77,7 +77,42 @@ if uploaded_file is not None:
     selected_columns = st.multiselect("Selecciona las columnas para detectar duplicados:", columns_to_check)
 
     if selected_columns:
-        duplicados_df = combined_df[combined_df.duplicated(subset=selected_columns, keep=False)]
+        filtered_df = combined_df
+        
+        # Iterar sobre las columnas seleccionadas para aplicar los filtros correspondientes
+        for col in selected_columns:
+            column_type = combined_df[col].dtype
+            
+            # Filtros por Fecha (si la columna es de tipo fecha)
+            if pd.api.types.is_datetime64_any_dtype(column_type):
+                st.write(f"Filtrando por {col} (Fecha)")
+                start_date = st.date_input(f"Fecha de inicio para {col}", value=datetime.today() - timedelta(days=30))
+                end_date = st.date_input(f"Fecha de fin para {col}", value=datetime.today())
+                filtered_df = filtered_df[filtered_df[col] >= pd.to_datetime(start_date)]
+                filtered_df = filtered_df[filtered_df[col] <= pd.to_datetime(end_date)]
+                st.write(f"Datos entre {start_date} y {end_date}:")
+                st.dataframe(filtered_df)
+            
+            # Filtros por Proveedor u otro tipo de texto (si la columna es de tipo objeto, que es texto)
+            elif pd.api.types.is_object_dtype(column_type):
+                st.write(f"Filtrando por {col} (Texto)")
+                unique_values = filtered_df[col].unique()
+                selected_value = st.selectbox(f"Selecciona un valor para {col}:", unique_values)
+                filtered_df = filtered_df[filtered_df[col] == selected_value]
+                st.write(f"Datos para el valor '{selected_value}' en {col}:")
+                st.dataframe(filtered_df)
+            
+            # Filtros por Monto u otro tipo numérico (si la columna es de tipo numérico)
+            elif pd.api.types.is_numeric_dtype(column_type):
+                st.write(f"Filtrando por {col} (Numérico)")
+                min_value = st.number_input(f"{col} mínimo", min_value=0, value=int(filtered_df[col].min()))
+                max_value = st.number_input(f"{col} máximo", min_value=0, value=int(filtered_df[col].max()))
+                filtered_df = filtered_df[(filtered_df[col] >= min_value) & (filtered_df[col] <= max_value)]
+                st.write(f"Datos con {col} entre {min_value} y {max_value}:")
+                st.dataframe(filtered_df)
+
+        # Detección de duplicados en las columnas seleccionadas
+        duplicados_df = filtered_df[filtered_df.duplicated(subset=selected_columns, keep=False)]
         
         if not duplicados_df.empty:
             st.write(f"Facturas duplicadas detectadas por las columnas: {', '.join(selected_columns)}:")
