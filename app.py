@@ -77,55 +77,11 @@ if uploaded_file is not None:
     selected_columns = st.multiselect("Selecciona las columnas para detectar duplicados:", columns_to_check)
 
     if selected_columns:
-        filtered_df = combined_df
-        
-        # Iterar sobre las columnas seleccionadas para aplicar los filtros correspondientes
-        for col in selected_columns:
-            column_type = combined_df[col].dtype
-            
-            # Filtros por Fecha (si la columna es de tipo fecha)
-            if pd.api.types.is_datetime64_any_dtype(column_type):
-                st.write(f"Filtrando por {col} (Fecha)")
-                start_date = st.date_input(f"Fecha de inicio para {col}", value=datetime.today() - timedelta(days=30))
-                end_date = st.date_input(f"Fecha de fin para {col}", value=datetime.today())
-                filtered_df = filtered_df[filtered_df[col] >= pd.to_datetime(start_date)]
-                filtered_df = filtered_df[filtered_df[col] <= pd.to_datetime(end_date)]
-                st.write(f"Datos entre {start_date} y {end_date}:")
-                st.dataframe(filtered_df)
-            
-            # Filtros por Proveedor u otro tipo de texto (si la columna es de tipo objeto, que es texto)
-            elif pd.api.types.is_object_dtype(column_type):
-                st.write(f"Filtrando por {col} (Texto)")
-                unique_values = filtered_df[col].unique()
-                selected_value = st.selectbox(f"Selecciona un valor para {col}:", unique_values)
-                filtered_df = filtered_df[filtered_df[col] == selected_value]
-                st.write(f"Datos para el valor '{selected_value}' en {col}:")
-                st.dataframe(filtered_df)
-            
-            # Filtros por Monto u otro tipo numérico (si la columna es de tipo numérico)
-            elif pd.api.types.is_numeric_dtype(column_type):
-                st.write(f"Filtrando por {col} (Numérico)")
-                min_value = st.number_input(f"{col} mínimo", min_value=0, value=int(filtered_df[col].min()))
-                max_value = st.number_input(f"{col} máximo", min_value=0, value=int(filtered_df[col].max()))
-                filtered_df = filtered_df[(filtered_df[col] >= min_value) & (filtered_df[col] <= max_value)]
-                st.write(f"Datos con {col} entre {min_value} y {max_value}:")
-                st.dataframe(filtered_df)
-
-        # Detección de duplicados en las columnas seleccionadas
-        duplicados_df = filtered_df[filtered_df.duplicated(subset=selected_columns, keep=False)]
+        duplicados_df = combined_df[combined_df.duplicated(subset=selected_columns, keep=False)]
         
         if not duplicados_df.empty:
             st.write(f"Facturas duplicadas detectadas por las columnas: {', '.join(selected_columns)}:")
             st.dataframe(duplicados_df)
-            
-            # Visualización: Gráfico de barras de duplicados
-            fig, ax = plt.subplots(figsize=(10, 6))
-            duplicados_count = duplicados_df[selected_columns[0]].value_counts()  # Contar duplicados por la primera columna seleccionada
-            ax.bar(duplicados_count.index.astype(str), duplicados_count.values, color='orange', edgecolor='black')
-            ax.set_xlabel(selected_columns[0])
-            ax.set_ylabel('Frecuencia')
-            ax.set_title(f'Duplicados en {selected_columns[0]}')
-            st.pyplot(fig)
         else:
             st.write(f"No se detectaron duplicados por las columnas: {', '.join(selected_columns)}.")
     else:
@@ -141,30 +97,62 @@ if uploaded_file is not None:
         if not montos_inusuales.empty:
             st.write(f"Montos inusuales en la columna {col}:")
             st.dataframe(montos_inusuales)
-            
-            # Visualización: Histograma
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(montos_inusuales[col], bins=10, color='orange', edgecolor='black')
-            ax.set_xlabel('Monto')
-            ax.set_ylabel('Frecuencia')
-            ax.set_title(f'Distribución de Montos Fuera de Umbral en {col}')
-            st.pyplot(fig)
 
     # **3️⃣ Conciliación de Reportes**
     st.subheader("Prueba de Conciliación de Reportes")
     
-    # Selección de fechas para el análisis
-    date_column = st.selectbox("Selecciona la columna de fecha para la conciliación:", combined_df.columns)
+    # Selección de las hojas para la conciliación
+    selected_sheets_for_conciliation = st.multiselect("Selecciona las hojas para comparar:", xls.sheet_names)
     
-    start_date = st.date_input("Fecha de inicio", value=datetime.today() - timedelta(days=30))
-    end_date = st.date_input("Fecha de fin", value=datetime.today())
+    if len(selected_sheets_for_conciliation) == 2:
+        # Leer las dos hojas seleccionadas
+        df1 = pd.read_excel(xls, sheet_name=selected_sheets_for_conciliation[0])
+        df2 = pd.read_excel(xls, sheet_name=selected_sheets_for_conciliation[1])
+
+        # Mostrar las primeras filas de ambas hojas
+        st.write(f"Datos de la hoja {selected_sheets_for_conciliation[0]}:")
+        st.dataframe(df1.head())
+        
+        st.write(f"Datos de la hoja {selected_sheets_for_conciliation[1]}:")
+        st.dataframe(df2.head())
+
+        # Permitir al usuario seleccionar las columnas a comparar
+        common_columns = list(set(df1.columns).intersection(set(df2.columns)))
+        selected_columns = st.multiselect("Selecciona las columnas para comparar:", common_columns)
+        
+        # Si se seleccionaron columnas para comparar
+        if selected_columns:
+            # Comparar los valores en las columnas seleccionadas
+            differences = pd.merge(df1, df2, on=selected_columns, how='outer', indicator=True)
+            
+            # Agregar una nueva columna de "Estado de Conciliación"
+            differences['Estado de Conciliación'] = differences['_merge'].apply(lambda x: 'Conciliado' if x == 'both' else 'No Conciliado')
+            
+            # Calcular la diferencia si es numérica
+            for col in selected_columns:
+                if pd.api.types.is_numeric_dtype(differences[col]):
+                    differences['Diferencia'] = differences.apply(lambda row: row[f'{col}_x'] - row[f'{col}_y'] 
+                                                                  if pd.notnull(row[f'{col}_x']) and pd.notnull(row[f'{col}_y']) else None, axis=1)
+            
+            # Mostrar las diferencias
+            st.write("Diferencias encontradas en las columnas seleccionadas:")
+            st.dataframe(differences[differences['_merge'] != 'both'])
+
+            # Visualización: Diferencias
+            show_graph = st.checkbox("Mostrar gráfico de diferencias", value=True)
+            if show_graph:
+                differences_by_value = differences[selected_columns[0]].value_counts()
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.bar(differences_by_value.index.astype(str), differences_by_value.values, color='green', edgecolor='black')
+                ax.set_xlabel(selected_columns[0])
+                ax.set_ylabel('Frecuencia')
+                ax.set_title(f'Diferencias en {selected_columns[0]}')
+                st.pyplot(fig)
     
-    # Filtrar los datos por el rango de fechas seleccionado
-    combined_df['Fecha'] = pd.to_datetime(combined_df[date_column], errors='coerce')
-    filtered_data = combined_df[(combined_df['Fecha'] >= pd.to_datetime(start_date)) & (combined_df['Fecha'] <= pd.to_datetime(end_date))]
-    
-    st.write(f"Datos entre {start_date} y {end_date}:")
-    st.dataframe(filtered_data)
+        else:
+            st.warning("Por favor selecciona al menos una columna para la conciliación.")
+    else:
+        st.warning("Por favor, selecciona dos hojas para la conciliación.")
 
     # **4️⃣ Revisar Horarios de Registro**
     st.subheader("Prueba de Registros Fuera de Horario")
@@ -184,18 +172,13 @@ if uploaded_file is not None:
 
         if fecha_columns:
             for col in fecha_columns:
-                registros_fuera_horario = combined_df[combined_df[col].dt.hour > 18]
+                # Verificar si la fecha es fuera del horario de trabajo
+                hora_inicio_extras = st.time_input("Hora de inicio para horas extras", value=datetime.strptime("18:00", "%H:%M").time())
+                registros_fuera_horario = combined_df[(combined_df[col].dt.hour < hora_inicio_extras.hour)]  # Filtro por hora
+
                 if not registros_fuera_horario.empty:
                     st.write(f"Registros fuera de horario en {col}:")
                     st.dataframe(registros_fuera_horario)
-
-                    registros_fuera_horario_by_date = registros_fuera_horario.groupby(registros_fuera_horario[col].dt.date).size().reset_index(name='Registros Fuera de Horario')
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    ax.plot(registros_fuera_horario_by_date[col], registros_fuera_horario_by_date['Registros Fuera de Horario'], marker='o', color='red')
-                    ax.set_xlabel('Fecha')
-                    ax.set_ylabel('Registros Fuera de Horario')
-                    ax.set_title(f'Registros Fuera de Horario por Día en {col}')
-                    st.pyplot(fig)
     except Exception as e:
         st.write(f"Hubo un error al procesar las fechas: {e}")
 
@@ -204,24 +187,61 @@ if uploaded_file is not None:
 
     limite_horas = st.number_input("Límite de horas extras (horas)", min_value=0, value=8, step=1)
     
-    if "Horas Trabajadas" in combined_df.columns:
+    # Parámetro: Hora de inicio para horas extras (hora de corte)
+    hora_inicio_extras = st.time_input("Hora de inicio para horas extras", value=datetime.strptime("18:00", "%H:%M").time())
+    
+    # Parámetro: Feriados (se pueden ingresar múltiples fechas)
+    feriados_input = st.text_area("Ingresa los feriados (separados por comas, formato: YYYY-MM-DD)", 
+                                  value="2022-12-25,2022-01-01")
+    feriados = [datetime.strptime(f, "%Y-%m-%d").date() for f in feriados_input.split(",")]
+    
+    if "Hora de Entrada" in combined_df.columns and "Hora de Salida" in combined_df.columns:
+        # Convertir las columnas de hora a datetime
+        combined_df['Hora de Entrada'] = pd.to_datetime(combined_df['Hora de Entrada'], errors='coerce')
+        combined_df['Hora de Salida'] = pd.to_datetime(combined_df['Hora de Salida'], errors='coerce')
+        
+        # Calcular las horas trabajadas
+        combined_df['Horas Trabajadas'] = (combined_df['Hora de Salida'] - combined_df['Hora de Entrada']).dt.total_seconds() / 3600
+        
+        # Calcular las horas extras
         combined_df['Horas Extras'] = combined_df['Horas Trabajadas'] - limite_horas
         empleados_extras = combined_df[combined_df['Horas Extras'] > 0]
 
-        if not empleados_extras.empty:
-            st.write("Empleados con horas extras detectados:")
-            st.dataframe(empleados_extras)
-            
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.bar(empleados_extras['ID Cliente'], empleados_extras['Horas Extras'], color='orange', edgecolor='black')
-            ax.set_xlabel('ID Cliente')
-            ax.set_ylabel('Horas Extras')
-            ax.set_title('Horas Extras por Empleado')
-            st.pyplot(fig)
+        # Verificar si las horas extras fueron aprobadas
+        if "Autorizado por" in combined_df.columns:
+            empleados_extras_no_aprobados = empleados_extras[empleados_extras['Autorizado por'].isnull()]
+
+            # Mostrar empleados con horas extras no aprobadas
+            if not empleados_extras_no_aprobados.empty:
+                st.write("Empleados con horas extras no aprobadas detectados:")
+                st.dataframe(empleados_extras_no_aprobados)
+
+            # Mostrar empleados con horas extras aprobadas
+            empleados_extras_aprobados = empleados_extras[empleados_extras['Autorizado por'].notnull()]
+            if not empleados_extras_aprobados.empty:
+                st.write("Empleados con horas extras aprobadas detectados:")
+                st.dataframe(empleados_extras_aprobados)
+
+            # Identificar empleados con horas extras en feriados
+            empleados_extras_feriados = empleados_extras[empleados_extras['Fecha'].dt.date.isin(feriados)]
+            if not empleados_extras_feriados.empty:
+                st.write("Empleados con horas extras en feriados detectados:")
+                st.dataframe(empleados_extras_feriados)
+
+            # Visualización de horas extras
+            show_graph = st.checkbox("Mostrar gráfico de horas extras", value=True)
+            if show_graph:
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.bar(empleados_extras['ID Cliente'], empleados_extras['Horas Extras'], color='orange', edgecolor='black')
+                ax.set_xlabel('ID Cliente')
+                ax.set_ylabel('Horas Extras')
+                ax.set_title('Horas Extras por Empleado')
+                st.pyplot(fig)
         else:
-            st.write("No se detectaron empleados con horas extras.")
+            st.write("La columna 'Autorizado por' no está presente en los datos.")
+
     else:
-        st.write("La columna 'Horas Trabajadas' no está presente en los datos.")
+        st.write("Las columnas 'Hora de Entrada' o 'Hora de Salida' no están presentes en los datos.")
 
     # **Descargar los resultados**
     if st.button("Descargar Resultados"):
