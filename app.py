@@ -99,6 +99,11 @@ if uploaded_file is not None:
             ax.set_ylabel('Frecuencia')
             ax.set_title(f'Duplicados en {selected_columns[0]}')
             st.pyplot(fig)
+            
+            # Análisis, alerta y conclusión
+            st.write(f"**Análisis**: Se han encontrado duplicados en las facturas o transacciones seleccionadas. Esto puede ser indicativo de errores en el registro o posible fraude.")
+            st.warning(f"**Alerta**: Es recomendable revisar las transacciones duplicadas para evitar pagos duplicados o registros erróneos.")
+            st.success(f"**Conclusión**: Se recomienda realizar una revisión detallada de las transacciones detectadas como duplicadas.")
         else:
             st.write(f"No se detectaron duplicados por las columnas: {', '.join(selected_columns)}.")
     else:
@@ -114,6 +119,11 @@ if uploaded_file is not None:
         if not montos_inusuales.empty:
             st.write(f"Montos inusuales en la columna {col}:")
             st.dataframe(montos_inusuales)
+            
+            # Análisis, alerta y conclusión
+            st.write(f"**Análisis**: Se han detectado montos que superan el umbral establecido. Esto podría indicar transacciones irregulares o fraudulentas.")
+            st.warning(f"**Alerta**: Es importante investigar las transacciones con montos fuera del umbral para verificar su legitimidad.")
+            st.success(f"**Conclusión**: Se recomienda una revisión exhaustiva de las transacciones con montos inusuales para prevenir fraudes.")
 
     # **3️⃣ Conciliación de Reportes**
     st.subheader("Prueba de Conciliación de Reportes")
@@ -173,11 +183,11 @@ if uploaded_file is not None:
                 ax.set_ylabel('Frecuencia')
                 ax.set_title(f'Diferencias en {selected_column}')
                 st.pyplot(fig)
-    
-        else:
-            st.warning("Por favor selecciona una columna para la conciliación.")
-    else:
-        st.warning("Por favor, selecciona dos hojas para la conciliación.")
+
+            # Análisis, alerta y conclusión
+            st.write(f"**Análisis**: Se han encontrado diferencias entre las hojas seleccionadas, lo que indica posibles errores en los registros o información desactualizada.")
+            st.warning(f"**Alerta**: Es necesario investigar y corregir las diferencias encontradas entre los reportes.")
+            st.success(f"**Conclusión**: Se recomienda realizar una reconciliación exhaustiva de los datos para asegurar la consistencia entre los reportes.")
 
     # **4️⃣ Revisar Horarios de Registro**
     st.subheader("Prueba de Registros Fuera de Horario")
@@ -204,6 +214,12 @@ if uploaded_file is not None:
                 if not registros_fuera_horario.empty:
                     st.write(f"Registros fuera de horario en {col}:")
                     st.dataframe(registros_fuera_horario)
+                    
+                    # Análisis, alerta y conclusión
+                    st.write(f"**Análisis**: Se han detectado registros fuera de horario laboral, lo que podría ser un indicador de irregularidades.")
+                    st.warning(f"**Alerta**: Es importante revisar estos registros para verificar si son autorizados.")
+                    st.success(f"**Conclusión**: Se recomienda realizar una revisión de los registros fuera de horario para tomar acciones correctivas.")
+
     except Exception as e:
         st.write(f"Hubo un error al procesar las fechas: {e}")
 
@@ -262,8 +278,11 @@ if uploaded_file is not None:
                 ax.set_ylabel('Horas Extras')
                 ax.set_title('Horas Extras por Empleado')
                 st.pyplot(fig)
-        else:
-            st.write("La columna 'Autorizado por' no está presente en los datos.")
+
+            # Análisis, alerta y conclusión
+            st.write(f"**Análisis**: Se han identificado empleados con horas extras. Es importante verificar si fueron aprobadas y si se registraron correctamente.")
+            st.warning(f"**Alerta**: Los registros de horas extras no aprobadas o en feriados deben ser revisados cuidadosamente.")
+            st.success(f"**Conclusión**: Se recomienda auditar las horas extras para asegurar que cumplan con las políticas y la legalidad.")
 
     else:
         st.write("Las columnas 'Hora de Entrada' o 'Hora de Salida' no están presentes en los datos.")
