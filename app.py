@@ -77,11 +77,28 @@ if uploaded_file is not None:
     selected_columns = st.multiselect("Selecciona las columnas para detectar duplicados:", columns_to_check)
 
     if selected_columns:
-        duplicados_df = combined_df[combined_df.duplicated(subset=selected_columns, keep=False)]
+        # Permitir que el usuario aplique filtros por las columnas seleccionadas
+        filtered_df = combined_df
+        for column in selected_columns:
+            filter_value = st.text_input(f"Filtra por {column}:", key=f"filter_{column}")
+            if filter_value:
+                filtered_df = filtered_df[filtered_df[column].astype(str).str.contains(filter_value, case=False, na=False)]
+        
+        # Detectar duplicados
+        duplicados_df = filtered_df[filtered_df.duplicated(subset=selected_columns, keep=False)]
         
         if not duplicados_df.empty:
             st.write(f"Facturas duplicadas detectadas por las columnas: {', '.join(selected_columns)}:")
             st.dataframe(duplicados_df)
+            
+            # Visualización: Gráfico de barras de duplicados
+            fig, ax = plt.subplots(figsize=(10, 6))
+            duplicados_count = duplicados_df[selected_columns[0]].value_counts()  # Contar duplicados por la primera columna seleccionada
+            ax.bar(duplicados_count.index.astype(str), duplicados_count.values, color='orange', edgecolor='black')
+            ax.set_xlabel(selected_columns[0])
+            ax.set_ylabel('Frecuencia')
+            ax.set_title(f'Duplicados en {selected_columns[0]}')
+            st.pyplot(fig)
         else:
             st.write(f"No se detectaron duplicados por las columnas: {', '.join(selected_columns)}.")
     else:
@@ -116,41 +133,49 @@ if uploaded_file is not None:
         st.write(f"Datos de la hoja {selected_sheets_for_conciliation[1]}:")
         st.dataframe(df2.head())
 
-        # Permitir al usuario seleccionar las columnas a comparar
+        # Permitir al usuario seleccionar una columna para comparar
         common_columns = list(set(df1.columns).intersection(set(df2.columns)))
-        selected_columns = st.multiselect("Selecciona las columnas para comparar:", common_columns)
+        selected_column = st.selectbox("Selecciona la columna para comparar:", common_columns)
         
-        # Si se seleccionaron columnas para comparar
-        if selected_columns:
-            # Comparar los valores en las columnas seleccionadas
-            differences = pd.merge(df1, df2, on=selected_columns, how='outer', indicator=True)
+        # Selección de rango de fechas para comparar
+        if selected_column:
+            start_date = st.date_input("Fecha de inicio", value=datetime.today() - timedelta(days=30))
+            end_date = st.date_input("Fecha de fin", value=datetime.today())
+            
+            # Filtrar los datos por el rango de fechas seleccionado
+            df1['Fecha'] = pd.to_datetime(df1[selected_column], errors='coerce')
+            df2['Fecha'] = pd.to_datetime(df2[selected_column], errors='coerce')
+            df1_filtered = df1[(df1['Fecha'] >= pd.to_datetime(start_date)) & (df1['Fecha'] <= pd.to_datetime(end_date))]
+            df2_filtered = df2[(df2['Fecha'] >= pd.to_datetime(start_date)) & (df2['Fecha'] <= pd.to_datetime(end_date))]
+            
+            # Comparar los valores en la columna seleccionada
+            differences = pd.merge(df1_filtered, df2_filtered, on=selected_column, how='outer', indicator=True)
             
             # Agregar una nueva columna de "Estado de Conciliación"
             differences['Estado de Conciliación'] = differences['_merge'].apply(lambda x: 'Conciliado' if x == 'both' else 'No Conciliado')
             
             # Calcular la diferencia si es numérica
-            for col in selected_columns:
-                if pd.api.types.is_numeric_dtype(differences[col]):
-                    differences['Diferencia'] = differences.apply(lambda row: row[f'{col}_x'] - row[f'{col}_y'] 
-                                                                  if pd.notnull(row[f'{col}_x']) and pd.notnull(row[f'{col}_y']) else None, axis=1)
+            if pd.api.types.is_numeric_dtype(differences[selected_column]):
+                differences['Diferencia'] = differences.apply(lambda row: row[f'{selected_column}_x'] - row[f'{selected_column}_y'] 
+                                                              if pd.notnull(row[f'{selected_column}_x']) and pd.notnull(row[f'{selected_column}_y']) else None, axis=1)
             
             # Mostrar las diferencias
-            st.write("Diferencias encontradas en las columnas seleccionadas:")
+            st.write("Diferencias encontradas en la columna seleccionada:")
             st.dataframe(differences[differences['_merge'] != 'both'])
 
             # Visualización: Diferencias
             show_graph = st.checkbox("Mostrar gráfico de diferencias", value=True)
             if show_graph:
-                differences_by_value = differences[selected_columns[0]].value_counts()
+                differences_by_value = differences[selected_column].value_counts()
                 fig, ax = plt.subplots(figsize=(10, 6))
                 ax.bar(differences_by_value.index.astype(str), differences_by_value.values, color='green', edgecolor='black')
-                ax.set_xlabel(selected_columns[0])
+                ax.set_xlabel(selected_column)
                 ax.set_ylabel('Frecuencia')
-                ax.set_title(f'Diferencias en {selected_columns[0]}')
+                ax.set_title(f'Diferencias en {selected_column}')
                 st.pyplot(fig)
     
         else:
-            st.warning("Por favor selecciona al menos una columna para la conciliación.")
+            st.warning("Por favor selecciona una columna para la conciliación.")
     else:
         st.warning("Por favor, selecciona dos hojas para la conciliación.")
 
